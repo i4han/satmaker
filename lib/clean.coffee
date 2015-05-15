@@ -1,0 +1,50 @@
+exports.clean =
+Layout: ->
+    MarginSides:
+    MarginTop:
+    sidebar:
+        width:
+        marginLeft:
+        marginRight:
+        marginTop
+        marginBottom
+    navbar:
+        height:     50
+        menuStart:
+        loginWidth:
+    dropdown:
+        width:
+Theme: ->
+    fontStylesheet:  "https://fonts.googleapis.com/css?family=PT+Sans:400,700"
+    fontFamily:            "'PT Sans', sans-serif"
+    fontWeight:            200
+    backgoundColor:        '#eee'
+    navbar:
+        style:              'fixed-top'
+        height:             50
+        color:              '#999'
+        backgroundColor:    'rgba(20, 23, 240, 0.6)'
+        login:
+            width:          100
+            dropdown:
+                width:      190
+        dropdown:
+            width:          240
+            padding:        25
+            a:
+                height:     '24px'
+                hover:      '#eee'
+        text:
+            color:          '#fff'
+            fontSize:      '10px'
+            height:         '20px'
+            width:          '80px'
+        hover:
+            color:             'black'
+            backgroundColor:   'rgba(255, 255, 255, 0.4)'
+        focus:
+            color:             'black'
+            backgroundColor:   'rgba(255, 255, 255, 0.6)'
+    sidebar:
+        a:
+            color:          'rgba(255, 255, 255, 1)'

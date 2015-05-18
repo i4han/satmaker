@@ -8,16 +8,16 @@ eco      =  require 'eco'
 chokidar =  require 'chokidar'
 {ncp}    =  require 'ncp'
 path     =  require 'path'
+https    =  require "https"
 jade     =  require 'jade'
 stylus   =  require 'stylus'
 async    =  require 'async'
 cson     =  require 'CSON'
+dotenv   =  require 'dotenv'
 nconf    =  require 'nconf'
 api      =  require('absurd')()
 {spawn, exec} = require 'child_process'
-
-# es       =  require 'event-stream'
-# rm_rf    =  require 'rimraf'
+{x}      =  require 'x-sat'
 
 command  =  process.argv[2]
 argv     =  require('minimist') process.argv[3..]
@@ -27,72 +27,91 @@ home = process.env.HOME
 cwd  = process.cwd()
 
 mongo_port = 27017
-mongo_str = "mongodb://localhost:#{mongo_port}/meteor"
+mongo_url  = "mongodb://localhost:#{mongo_port}/meteor"
+# mongo_url in config
 
-if ! work = process.env.SATELLITE_DIR
-    console.error """
-        export SATELLITE_DIR=#{cwd}     # full path to satellite directory
-        export MONGO_URL=#{mongo_str}   # if you use external mongodb.
-        and also set NODE_PATH, NODE_MODULES
-        """ # write .env
-    process.exit 1 
-settings_json =  add work, '.settings.json'
-settings_cson =  add work, '.settings.cson'
-nconf.file file: add work, '.config.json'
-Settings = cson.load settings_cson
-site     = Settings.site or process.exit(1)
-build_dir  = 'build'
+build_dir      = 'build'
+index_basename = 'index' 
+coffee_ext     = '.coffee'
+index_coffee   = index_basename + coffee_ext
+
+console.log dir_list = (cwd.split '/').concat [true]
+sat_dir = '.sat'
+while dir_list.pop()
+    if fs.existsSync sat_path = add dir_list.join('/'), sat_dir
+        break
+site_path = dir_list.join '/'
+fs.existsSync(dotenv_path = add home,      '.env') and dotenv.load path:dotenv_path
+fs.existsSync(dotenv_path = add site_path, '.env') and dotenv.load path:dotenv_path
+build_path = add site_path, build_dir
+index_coffee_path = add site_path, index_coffee
+env = (v) -> (_path = process.env[v]) and _path.replace /^~\//, home + '/'
+satellite_path = env('SATELLITE_PATH') or add home, '.satellite'
+settings_path  = env('SETTINGS_PATH')  or add satellite_path, 'settings.coffee'
+
+updateRequire = (f) -> delete require.cache[f] and require f
+readSettings  = (f) -> (fs.existsSync(f) and (updateRequire f).Settings) or {}
+Settings = readSettings settings_path
+(func = (o) -> x.keys(o).forEach (k) -> if x.isObject o[k] then func o[k] else o[k] = x.func o[k])(Settings)
+settings_json =  add build_path, 'settings.json'
+nconf.file file: add sat_path, 'config.json'
+
+@Theme = @Modules = {}
+theme_cson = ''
+
+
+init_settings = ->
+    Settings = readSettings settings_path
+    x.extend Settings, readSettings index_coffee_path
+    (site = Settings.site) and (local = Settings.local) and local[site] and x.extend Settings, local[site]
+    @Settings = Settings
+init_settings()
+
+# site      = Settings.site or process.exit(1)
+# site_path = add apps_path, site
+
 lib_dir    = 'lib'
 client_dir = 'client'
 public_dir = 'public'
-lib_path    = add work, lib_dir
-style_path  = add work, 'style'
-meteor_path = add work, 'meteor'
-mobile_path = add work, 'mobile'
-apps_path   = add work, 'apps' 
-site_path     = add apps_path, site 
-index_coffee  = add site_path, 'index.coffee'
-local_settings_cson = add site_path, 'settings.cson'
-site_meteor_path    = add site_path, 'app'    
-site_client_path    = add site_meteor_path, client_dir
-site_lib_path       = add site_meteor_path, lib_dir
-site_public_path    = add site_meteor_path, public_dir
-meteor_client_path  = add meteor_path, client_dir
-meteor_lib_path     = add meteor_path, lib_dir
-meteor_public_path  = add meteor_path, public_dir
-meteor_package_path = add meteor_path, 'packages'
-mobile_client_path  = add mobile_path, client_dir
-mobile_lib_path     = add mobile_path, lib_dir
-mobile_public_path  = add mobile_path, public_dir
 
-x_path    = add meteor_path, 'packages/isaac:x'
+#lib_path    = add build_path, lib_dir
 
-{x} = require add x_path, 'x'
-x.extend x, (require add x_path, 'x_init').x
+#test_path = add work, 'meteor'
+#mobile_path = add work, 'mobile'
+#apps_path   = add work, 'apps' 
 
-@Theme = @Module = {}
-theme_cson = ''
-init_settings = ->
-    Settings = cson.load settings_cson
-    fs.existsSync(local_settings_cson) and x.extend Settings, cson.load local_settings_cson
-    Settings[site] and x.extend Settings, Settings[site]
-    Settings.public? and Settings.public.meteor_methods = []
-    x.keys(Settings).map (k) -> x.isObject(Settings[k]) and x.keys(Settings[k]).map (l) ->
-        if x.isObject(Settings[k][l])
-            #console.log Settings[k][l]
-            'string' == typeof (method = Settings[k][l].meteor_method) and Settings.public.meteor_methods.push method
-    @Theme = cson.load theme_cson = add style_path, Settings.theme + '.cson'
-    @Settings = Settings
-init_settings()
+#local_settings_cson = add site_path, 'settings.cson'
+#site_meteor_path    = add site_path, 'app'
+build_client_path    = add build_path, client_dir
+build_lib_path       = add build_path, lib_dir
+build_public_path    = add build_path, public_dir
+
+style_path  = env('STYLE_PATH') or add site_path, 'style'
+
+#mobile_client_path  = add mobile_path, client_dir
+#mobile_lib_path     = add mobile_path, lib_dir
+#mobile_public_path  = add mobile_path, public_dir
+
+# x_path    = add test_path, 'packages/isaac:x'
+# {x} = require add x_path, 'x'
+# x.extend x, (require add x_path, 'x_init').x
+# 
+
 lib_files    = x.toArray Settings.lib_files
 my_packages  = x.toArray Settings.packages
 public_files = x.toArray Settings.public_files
-package_paths = my_packages.map (p) -> add meteor_package_path, p
-lib_paths     = lib_files  .map (l) -> add lib_path, l + '.coffee'
+if test_path = env('TEST_PATH') or Settings.test_path
+    test_client_path  = add test_path, client_dir
+    test_lib_path     = add test_path, lib_dir
+    test_public_path  = add test_path, public_dir
+    test_packages_path = add test_path, 'packages'
+    package_paths = my_packages.map (p) -> add test_packages_path, p
 
-module_paths  = (fs.readdirSync site_path).filter((f) -> '.coffee' == path.extname f)
-    .map((f) -> add site_path, f)
-    .concat(lib_files.map (l) -> add lib_path, l + '.coffee')
+# lib_paths     = lib_files  .map (l) -> add lib_path, l + coffee_ext
+
+'create' isnt command and module_paths = (fs.readdirSync site_path).filter((f) -> coffee_ext is path.extname f).map((f) -> add site_path, f)
+
+#   .concat(lib_files.map (l) -> add lib_path, l + coffee_ext)
 
 updated = 'updated time'
 
@@ -101,8 +120,8 @@ logio_port = 8777
 rmate_port = 8080
 
 other_files  = x.toArray Settings.other_files
-module_paths  = [index_coffee] 
-    .concat lib_files  .map (l) -> add lib_path, l + '.coffee'
+module_paths  = [index_coffee_path] 
+    .concat lib_files  .map (l) -> add lib_path, l + coffee_ext
     .concat other_files.map (o) -> add site_path, o
 
 mongod_option = "-f #{home}/.mongoconf"
@@ -121,7 +140,7 @@ mongoconf = ->
         """
     fs.writeFile file = home + '/.mongoconf', data + '\n', (err) -> log err or data
 
-mongo_str = "mongodb://localhost:#{mongo_port}/meteor"
+mongo_url = "mongodb://localhost:#{mongo_port}/meteor"
 
 alias sal='find $all -type f -print0 | xargs -0 -I % rmate -p #{rmate_port} % +'
 alias mngd='mongod #{mongod_option} &'
@@ -143,7 +162,7 @@ refresh
 logs
 logh
 
-###
+
 
 install = ->
     npm_modules = 'coffee-script underscore stylus mongodb chokidar jade ps-node '  + 
@@ -200,6 +219,7 @@ logconf = ->
         fs.writeFile add(home, a[0]), a[1], (err) -> log err or a[1]
     logs.map (a) -> fs.exists f = add( home,'.log.io', a), (ex) -> ex or fs.writeFile f
 
+###
 
 log = ->
     # node-logentries
@@ -211,7 +231,7 @@ error = (e) -> e and (console.error(e) or 1)
 isType = (file, type) -> path.extname(file) is '.' + type  # move to x?
 
 collectExt = (dir, ext) ->
-    ((fs.readdirSync dir).map (file) -> 
+    (fs.existsSync(dir) or '') and ((fs.readdirSync dir).map (file) -> 
         if isType(file, ext) then fs.readFileSync add dir, file else '').join '\n'
 
 cd   = (dir) -> process.chdir dir
@@ -227,7 +247,8 @@ rmdir = (dir, f) ->
     func(f)
     dir
 
-mkdir = (dir, f) -> fs.readdir dir, (e, l) -> e and fs.mkdir dir, (e) -> e or (f and f())
+mkdir = (dir, f) -> 
+    dir and fs.readdir dir, (e, l) -> e and fs.mkdir dir, (e) -> e or (f and f())
 
 compare_file = (source, target) -> false
 
@@ -245,8 +266,8 @@ cpdir = (source, target) ->
         else cp _path, add target, f
 
 clean_up = ->
-    rmdir site_client_path 
-    rmdir site_lib_path 
+    rmdir build_client_path 
+    rmdir build_lib_path 
 
 daemon = ->
     ps.lookup command: 'node',   psargs: 'ux', (e, a) -> 
@@ -261,7 +282,7 @@ coffee_clean = ->
 
 coffee_alone = ->
     coffees = []
-    watched_coffee = lib_paths.concat(index_coffee)
+    watched_coffee = lib_paths.concat(index_coffee_path)
     package_paths.map (p) -> (fs.readdirSync p).map (f) -> 
         isType(f, 'coffee') and watched_coffee.push add p, f
     ps.lookup command: 'node',   psargs: 'ux', (e, a) -> a.map (p, i) -> 
@@ -271,7 +292,21 @@ coffee_alone = ->
         if a.length - 1 == i
             watched_coffee.map (c) -> 
                 if c.match /\/packages\// then coffee_watch path.dirname(c), c
-                else coffee_watch meteor_lib_path, c
+                else coffee_watch test_lib_path, c
+
+coffee_compile = ->
+    mkdir build_lib_path
+    watched_coffee = module_paths
+    package_paths and package_paths.map (p) -> (fs.readdirSync p).map (f) -> 
+        isType(f, 'coffee') and watched_coffee.push add p, f
+    ps.lookup command: 'node',   psargs: 'ux', (e, a) -> a.map (p, i) -> 
+        if '-wbc' == p.arguments?[3] and (c = p.arguments[4])?
+            if (i = watched_coffee.indexOf(c)) <  0 then process.kill p.pid, 'SIGKILL'
+            else watched_coffee.splice(i, 1)
+        if a.length - 1 == i
+            watched_coffee.map (c) -> 
+                if c.match /\/packages\// then coffee_watch path.dirname(c), c
+                else coffee_watch build_lib_path, c
 
 meteor = (dir, port='3000') ->
     cd dir
@@ -296,7 +331,7 @@ meteor_command = (command, argument, path) ->
 
 start_meteor = ->
     stop_meteor -> 
-        meteor meteor_path, '3300'
+        meteor test_path, '3300'
         #meteor site_meteor_path
 
 hold_watch = (sec) -> updated = process.hrtime()[0] + sec
@@ -304,8 +339,8 @@ hold_watch = (sec) -> updated = process.hrtime()[0] + sec
 start_up = ->
     coffee_alone()
     chokidar.watch(settings_cson).on 'change', -> settings()
-    #chokidar.watch(meteor_lib_path).on 'change', (d) -> buid() # cp d, add site_lib_path, path.basename d
-    lib_paths.concat([index_coffee, theme_cson]).map (f) -> 
+    #chokidar.watch(test_lib_path).on 'change', (d) -> buid() # cp d, add build_lib_path, path.basename d
+    lib_paths.concat([index_coffee_path, theme_cson]).map (f) -> 
         chokidar.watch(f).on 'change', -> build()
     hold_watch(2)
     package_paths.map (p) ->
@@ -352,7 +387,7 @@ meteor_run_ios  = -> meteor_command 'run', 'ios', mobile_path
 add_packages    = -> (meteor_packages.concat(mobile_packages).reduce ((f, p) -> -> (meteor_command 'add',    p, mobile_path).on 'exit', f), meteor_run_ios)()
 remove_packages = -> (meteor_packages_removed                .reduce ((f, p) -> -> (meteor_command 'remove', p, mobile_path).on 'exit', f), add_packages  )()
 prepare_mobile  = ->
-    'client lib public resources'.split(' ').map (d) -> ncp add(meteor_path, d), add mobile_path, d
+    'client lib public resources'.split(' ').map (d) -> ncp add(test_path, d), add mobile_path, d
     'mobile.html mobile.css mobile.js'.split(' ').map (f) -> fs.unlink add(mobile_path, f), (e) -> error e
     (['install-sdk', 'add-platform'].reduce ((f, c) -> -> (meteor_command c, 'ios', mobile_path).on 'exit', f), remove_packages)()
 update_mobile = ->
@@ -361,7 +396,8 @@ update_mobile = ->
 
 settings = ->
     init_settings()
-    (fs.readdirSync apps_path).concat(['private']).map (d) -> delete Settings[d]
+    delete Settings.local
+    console.log settings_json
     fs.writeFile settings_json, JSON.stringify(Settings, '', 4) + '\n', (e, data) -> 
         console.log new Date(), 'Settings'
 
@@ -376,7 +412,7 @@ publish = ->
     version = {}
     updated_packages = nconf.get 'updated_packages'
     my_packages.map (v, i) ->
-        package_dir = add meteor_package_path, v
+        package_dir = add test_packages_path, v
         package_js  = add package_dir, 'package.js'
         isLast = my_packages.length - 1 == i
         (true or isLast or -1 < updated_packages.indexOf(package_dir)) and fs.readFile package_js, 'utf8', (e, data) ->
@@ -396,7 +432,7 @@ publish = ->
                     e or x.keys(version).concat([my_packages[my_packages.length - 1]])
                     .filter((v, i, a) -> a.indexOf(v) == i).map (d) ->
                         console.log new Date, 'Publishing', d 
-                        cd add meteor_package_path, d
+                        cd add test_packages_path, d
                         meteor_publish()
 
 
@@ -431,12 +467,10 @@ directives =
         f: (n, b) -> stylus(b).render() + '\n'
 
 write_build = (file, data) ->
-    f = add(meteor_client_path, file)
-    data.length > 0 and fs.readFile f, 'utf8', (err, d) ->
+    data.length > 0 and fs.readFile f = add(build_client_path, file), 'utf8', (err, d) ->
         (!d? or data != d) and fs.writeFile f, data, (e) ->
-            fs.writeFile add(site_client_path, file), data, (e2) ->
-                console.log new Date(), f
-            fs.writeFile add(mobile_client_path, file), data
+            console.log new Date(), f
+            # fs.writeFile add(mobile_client_path, file), data
 
 toObject = (v) ->
     if !v? then {}
@@ -462,27 +496,43 @@ toString = (v, d) ->
     if x.isEmpty data = toObject v.eco then str
     else eco.render str, toObject data
 
-build = () ->
+build_origin = () ->
     console.log new Date()
     init_settings()
     mkdir mobile_client_path
-    mkdir meteor_client_path
-    mkdir site_client_path
-    @Module = module_paths.reduce ((o, f) -> x.extend o, (v = delete require.cache[f] and require f)[k = x.keys(v)[0]]), {}
-    x.keys(@Module).map (name) -> x.module name, @Module[name]
+    mkdir test_client_path
+    mkdir build_client_path
+    @Modules = module_paths.reduce ((o, f) -> x.extend o, (v = delete require.cache[f] and require f)[k = x.keys(v)[0]]), {}
+    x.keys(@Modules).map (name) -> x.module name, @Modules[name]
     x.keys(directives).map (d) -> 
         write_build (it = directives[d]).file, (x.func(it.header) || '') + 
-            x.keys(@Module).map((n) -> (b = toString(@Module[n], d)) and it.f.call @, n, b).filter((o) -> o?).join ''
-    x.keys(@Module).map((n, i) -> @Module[n].absurd and api.add toTidy @Module[n], 'absurd')
+            x.keys(@Modules).map((n) -> (b = toString(@Modules[n], d)) and it.f.call @, n, b).filter((o) -> o?).join ''
+    x.keys(@Modules).map((n, i) -> @Modules[n].absurd and api.add toTidy @Modules[n], 'absurd')
         .concat([write_build 'absurd.css', api.compile()])
         
-    mkdir site_public_path
-    fs.readdirSync(meteor_lib_path).map (f) ->
-        cp add(meteor_lib_path,    f), add site_lib_path,      f
-        cp add(meteor_lib_path,    f), add mobile_lib_path,    f
+    mkdir build_public_path
+    fs.readdirSync(test_lib_path).map (f) ->
+        cp add(test_lib_path,    f), add build_lib_path,      f
+        cp add(test_lib_path,    f), add mobile_lib_path,    f
     public_files.map (f) -> 
-        cp add(meteor_public_path, f), add site_public_path,   f
-        cp add(meteor_public_path, f), add mobile_public_path, f
+        cp add(test_public_path, f), add build_public_path,   f
+        cp add(test_public_path, f), add mobile_public_path, f
+
+read = (f, kind) -> 
+    x.func if index_basename is base = path.basename f, coffee_ext then (updateRequire f)[kind]
+    else (updateRequire f)[base][kind]
+
+build = () ->
+    console.log new Date()
+    init_settings()
+    mkdir build_client_path
+    @Modules = module_paths.reduce ((o, f) -> x.extend o, read f, 'Modules'), {}
+    x.keys(@Modules).map (name) -> x.module name, @Modules[name]
+    x.keys(directives).map (d) -> 
+        write_build (it = directives[d]).file, (x.func(it.header) || '') + 
+            x.keys(@Modules).map((n) -> (b = toString(@Modules[n], d)) and it.f.call @, n, b).filter((o) -> o?).join ''
+    x.keys(@Modules).map((n, i) -> @Modules[n].absurd and api.add toTidy @Modules[n], 'absurd')
+        .concat([write_build 'absurd.css', api.compile()])        
 
 gitpass = ->
     prompt.message = 'github'
@@ -499,38 +549,52 @@ gitpass = ->
 #add_packages    = -> 
 #remove_packages = -> ()()
 
+github_file = (file) ->
+    req = https.request
+        host: 'raw.githubusercontent.com', port: 443, method: 'GET'
+        path: '/i4han/satmaker/master/lib/' + path.basename file
+        (res) ->
+            res.setEncoding 'utf8'
+            res.on 'data', (b) -> fs.writeFile file, b, 'utf8', (e) -> console.log 'written:', file
+    req.end()
+    req.on 'error', (e) -> console.log 'problem with request: ' + e.message
+
 create = ->
     site = argv._[0]
-    site.length > 0 or console.error "Can not create ", site
-    fs.mkdir site, ->
+    site.length > 0 or console.error "Can not create", site
+    fs.mkdir site, (e) ->
+        e and (console.log("Can not create", site, "\nAlready exists?") or process.exit 1)
         cwd = process.cwd()
-        (meteor_command 'create', build_dir, add cwd, site).on 'exit', ->
+        mkdir add (site_path = add cwd, site), sat_dir 
+        (meteor_command 'create', build_dir, site_path).on 'exit', ->
             build_path = add cwd, site, build_dir
             (meteor_packages_removed.reduce ((f, p) -> -> (meteor_command 'remove', p, build_path).on 'exit', f), ->
                 (meteor_packages.concat(mobile_packages).reduce ((f, p) -> -> (meteor_command 'add', p, build_path).on 'exit', f), ->
-                    '.html .css .js'.split(' ').map (f) -> fs.unlink add(build_path, build_dir + f), (e) -> error e
+                    '.html .css .js'.split(' ').map (f) -> fs.unlink add(build_path, build_dir + f), (e) -> error e 
+                    [index_coffee, '.gitignore'].forEach (f) -> github_file add site_path, f          
                 )()
             )()
 
-test = ->
-    console.log argv
 
 tasks =
     test:
-        description: 'test'
         call: -> test()
+        description: 'test'
     create:
-        description: 'Create a project.'
         call: -> create()
+        description: 'Create a project.'
     build:
-        description: 'Build meteor client files.'
         call: -> build()
+        description: 'Build meteor client files.'
     settings:
-        description: 'Settings'
         call: -> settings()
+        description: 'Settings'
     publish:
-        description: 'Publish Meteor packages'
         call: -> publish()
+        description: 'Publish Meteor packages.'
+    coffee:
+        call: -> coffee_compile()
+        description: 'Watching coffee files to complie.'
 
 (task = tasks[command]) and task.call()
 task or x.keys(tasks).map (k) -> 

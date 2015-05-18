@@ -1,6 +1,6 @@
 {
   "name": "satmaker",
-  "version": "0.0.3",
+  "version": "0.0.5",
   "description": "Tools for Satellite",
   "main": "index.js",
   "bin": { "sat" : "./sat.coffee" }, 
@@ -14,14 +14,15 @@
       "ps-node": "*",
       "eco": "*",
       "async": "*",
-      "readline": "*",
       "nconf": "*",
       "absurd": "*",
+      "dotenv": "*",
       "x-sat": ">=0.3.8"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "repository": "https://github.com/i4han/satmaker.git",
   "author": "Isaac Han <isaac@hi16.ca>",
   "license": "GPL and commercial"
 }

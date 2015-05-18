@@ -1,10 +1,10 @@
 
-exports =
-Settings: ->
+exports.Settings = ->
 	title: "Spark game"
 	theme: "clean"
 	lib:   "ui"
-Modules: ->
+
+exports.Modules = ->
 	width  = 375
 	height = 667
 	box    = width / 5
